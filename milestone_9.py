@@ -10,6 +10,11 @@ import sys
 import requests
 from textblob import TextBlob
 from datetime import datetime, timedelta
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # --- Logger Setup ---
 log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -25,9 +30,9 @@ logger.addHandler(console_handler)
 warnings.simplefilter(action='ignore', category=pd.core.common.SettingWithCopyWarning)
 
 # --- Configuration ---
-# IMPORTANT: Add your API keys here
-NEWS_API_KEY = "YOUR_NEWS_API_KEY" 
-GLASSNODE_API_KEY = "YOUR_GLASSNODE_API_KEY"
+# API keys are now loaded securely from the .env file
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+GLASSNODE_API_KEY = os.getenv("GLASSNODE_API_KEY")
 
 PRODUCT_IDS = ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD"] 
 GRANULARITY_SIGNAL = "ONE_DAY"
@@ -87,8 +92,8 @@ def get_historical_data(product_id, granularity, years=1):
 
 def get_news_sentiment(product_id):
     """Fetches news and calculates an aggregate sentiment score."""
-    if NEWS_API_KEY == "YOUR_NEWS_API_KEY":
-        logger.warning("NewsAPI key not set. Skipping sentiment analysis.")
+    if not NEWS_API_KEY:
+        logger.warning("NEWS_API_KEY not found in .env file. Skipping sentiment analysis.")
         return "Neutral"
     search_term = product_id.split('-')[0]
     logger.info(f"Fetching news sentiment for {search_term}...")
@@ -110,18 +115,16 @@ def get_news_sentiment(product_id):
 
 def get_onchain_status(product_id):
     """Fetches on-chain data (exchange netflow) to gauge accumulation/distribution."""
-    if GLASSNODE_API_KEY == "YOUR_GLASSNODE_API_KEY":
-        logger.warning("Glassnode API key not set. Skipping on-chain analysis.")
+    if not GLASSNODE_API_KEY:
+        logger.warning("GLASSNODE_API_KEY not found in .env file. Skipping on-chain analysis.")
         return "Neutral"
     
     asset = product_id.split('-')[0]
     logger.info(f"Fetching on-chain exchange flow for {asset}...")
     
-    # We look at the netflow over the last 7 days to get a medium-term view
     since_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
     
     try:
-        # Glassnode API endpoint for exchange net position change
         url = f"https://api.glassnode.com/v1/metrics/distribution/exchange_net_position_change?a={asset}&s={since_date}&i=24h"
         params = {'api_key': GLASSNODE_API_KEY}
         response = requests.get(url, params=params)
@@ -132,14 +135,11 @@ def get_onchain_status(product_id):
             logger.warning(f"No on-chain data returned for {asset}.")
             return "Neutral"
 
-        # Sum the netflow over the last 7 days
         net_flow_sum = sum(item['v'] for item in data)
         logger.info(f"7-day cumulative exchange netflow for {asset}: {net_flow_sum:,.2f} {asset}")
 
-        # If the sum is negative, more coins have left exchanges than arrived (Accumulation)
         if net_flow_sum < 0:
             return "Accumulation"
-        # If the sum is positive, more coins have arrived on exchanges (Distribution)
         else:
             return "Distribution"
 
@@ -213,7 +213,6 @@ def run_analysis_cycle():
         tech_signal, latest_close_price = latest_row['Signal'], latest_row['Close']
         latest_timestamp = latest_row.name
 
-        # --- FINAL SIGNAL LOGIC (MTA + Sentiment + On-Chain Filter) ---
         final_signal = "HOLD"
         if tech_signal == 1 and trend == "Bullish" and sentiment != "Negative" and onchain == "Accumulation":
             final_signal = "STRONG BUY"
@@ -242,6 +241,11 @@ def run_analysis_cycle():
 def main():
     """Main loop to run the analysis periodically."""
     logger.info("Crypto Analysis Bot started.")
+    # Check for API keys at startup
+    if not NEWS_API_KEY or not GLASSNODE_API_KEY:
+        logger.error("CRITICAL: NEWS_API_KEY or GLASSNODE_API_KEY is not set in the .env file. Exiting.")
+        return # Exit if keys are missing
+
     while True:
         run_analysis_cycle()
         sleep_duration = 24 * 60 * 60
