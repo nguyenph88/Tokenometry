@@ -63,7 +63,9 @@ def get_historical_data(product_id, granularity):
             granularity=granularity
         )
 
-        candles = response.get('candles',)
+        # Convert response to dictionary and extract candles
+        response_dict = response.to_dict()
+        candles = response_dict.get('candles', [])
         if not candles:
             print("No data returned from Coinbase.")
             return None
@@ -135,20 +137,20 @@ def generate_signals(df, short_window, long_window):
     long_sma_col = f'SMA_{long_window}'
     
     # Create a 'Signal' column initialized to 0
-    df = 0
+    df['Signal'] = 0
 
     # Generate the buy signal (Golden Cross)
     # This occurs when the short SMA crosses ABOVE the long SMA.
     # We check the condition for the current candle and the opposite for the previous one.
     buy_condition = (df[short_sma_col] > df[long_sma_col]) & \
                     (df[short_sma_col].shift(1) <= df[long_sma_col].shift(1))
-    df.loc = 1
+    df.loc[buy_condition, 'Signal'] = 1
 
     # Generate the sell signal (Death Cross)
     # This occurs when the short SMA crosses BELOW the long SMA.
     sell_condition = (df[short_sma_col] < df[long_sma_col]) & \
                      (df[short_sma_col].shift(1) >= df[long_sma_col].shift(1))
-    df.loc = -1
+    df.loc[sell_condition, 'Signal'] = -1
     
     return df
 
@@ -169,14 +171,14 @@ def main():
         data = generate_signals(data, SHORT_WINDOW, LONG_WINDOW)
         
         # 4. Display the signals
-        signals = data!= 0]
+        signals = data[data['Signal'] != 0]
         
         print("\n--- Trading Signals Found ---")
         if signals.empty:
             print("No trading signals generated in the fetched historical data.")
         else:
             for index, row in signals.iterrows():
-                signal_type = "BUY (Golden Cross)" if row == 1 else "SELL (Death Cross)"
+                signal_type = "BUY (Golden Cross)" if row['Signal'] == 1 else "SELL (Death Cross)"
                 print(f"Date: {index.date()} | Signal: {signal_type} | Close Price: ${row['Close']:.2f}")
     
     print("\n--- Analysis Complete ---")
