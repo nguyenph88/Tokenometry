@@ -27,31 +27,39 @@ def get_historical_data(product_id, granularity, years=3):
         client = RESTClient()
         end_time = int(time.time())
         start_time = end_time - (years * 365 * 86400)
+        
+        print(f"Time range: {pd.to_datetime(start_time, unit='s').date()} to {pd.to_datetime(end_time, unit='s').date()}")
+        print(f"Estimated total days: {(end_time - start_time) / 86400:.0f}")
+        print(f"Estimated API calls needed: {((end_time - start_time) / 86400 / 300):.1f}")
 
         all_candles = []
         current_start = start_time
+        batch_count = 0
         
         while current_start < end_time:
+            batch_count += 1
             current_end = current_start + (300 * 86400)
             if current_end > end_time:
                 current_end = end_time
 
-            print(f"Fetching batch from {pd.to_datetime(current_start, unit='s').date()} to {pd.to_datetime(current_end, unit='s').date()}...")
+            print(f"Batch {batch_count}: Fetching from {pd.to_datetime(current_start, unit='s').date()} to {pd.to_datetime(current_end, unit='s').date()}...")
 
-            response = client.get_market_candles(
+            response = client.get_public_candles(
                 product_id=product_id,
                 start=str(current_start),
                 end=str(current_end),
                 granularity=granularity
             )
             
-            candles = response.get('candles')
+            # Convert response to dictionary and extract candles
+            response_dict = response.to_dict()
+            candles = response_dict.get('candles', [])
             if not candles:
                 break
             
             all_candles.extend(candles)
-            last_candle_start = int(candles[-1]['start'])
-            current_start = last_candle_start + 86400
+            # Move to the next batch by advancing 300 days (not 1 day)
+            current_start = current_end
             time.sleep(0.5)
 
         if not all_candles:
