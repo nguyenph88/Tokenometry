@@ -44,7 +44,7 @@ def setup_logger():
 logger = setup_logger()
 
 # Suppress SettingWithCopyWarning
-warnings.simplefilter(action='ignore', category=pd.core.common.SettingWithCopyWarning)
+warnings.simplefilter(action='ignore', category=pd.errors.SettingWithCopyWarning)
 
 # --- Configuration ---
 PRODUCT_IDS = ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD"] 
@@ -69,19 +69,33 @@ def get_historical_data(product_id, granularity, years=1):
         client = RESTClient()
         end_time = int(time.time())
         start_time = end_time - (years * 365 * 86400)
+        
+        # Determine seconds per candle for pagination
+        granularity_seconds = {"ONE_DAY": 86400, "ONE_WEEK": 604800}.get(granularity, 86400)
+        
+        logger.info(f"  Time range: {pd.to_datetime(start_time, unit='s').date()} to {pd.to_datetime(end_time, unit='s').date()}")
+        logger.info(f"  Estimated total periods: {(end_time - start_time) / granularity_seconds:.0f}")
+        logger.info(f"  Estimated API calls needed: {((end_time - start_time) / granularity_seconds / 300):.1f}")
+        
         all_candles = []
         current_start = start_time
-        granularity_seconds = {"ONE_DAY": 86400, "ONE_WEEK": 604800}.get(granularity, 86400)
+        batch_count = 0
 
         while current_start < end_time:
+            batch_count += 1
             current_end = current_start + (300 * granularity_seconds)
             if current_end > end_time: current_end = end_time
-            response = client.get_market_candles(product_id=product_id, start=str(current_start), end=str(current_end), granularity=granularity)
-            candles = response.get('candles')
+
+            logger.info(f"  Batch {batch_count}: Fetching from {pd.to_datetime(current_start, unit='s').date()} to {pd.to_datetime(current_end, unit='s').date()}...")
+            response = client.get_public_candles(product_id=product_id, start=str(current_start), end=str(current_end), granularity=granularity)
+            
+            # Convert response to dictionary and extract candles
+            response_dict = response.to_dict()
+            candles = response_dict.get('candles', [])
             if not candles: break
             all_candles.extend(candles)
-            last_candle_start = int(candles[-1]['start'])
-            current_start = last_candle_start + granularity_seconds
+            # Move to the next batch by advancing 300 periods (not 1 period)
+            current_start = current_end
             time.sleep(0.5)
 
         if not all_candles: return None
