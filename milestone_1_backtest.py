@@ -26,7 +26,7 @@ def get_historical_data(product_id, granularity, years=3):
     Returns:
         pd.DataFrame: A pandas DataFrame containing the historical data,
                       or None if the request fails.
-    """
+        """
     print(f"Fetching last {years} years of historical data for {product_id}...")
     try:
         client = RESTClient()
@@ -35,38 +35,46 @@ def get_historical_data(product_id, granularity, years=3):
         end_time = int(time.time())
         # Seconds in a day: 86400
         start_time = end_time - (years * 365 * 86400)
+        
+        print(f"Time range: {pd.to_datetime(start_time, unit='s').date()} to {pd.to_datetime(end_time, unit='s').date()}")
+        print(f"Estimated total days: {(end_time - start_time) / 86400:.0f}")
+        print(f"Estimated API calls needed: {((end_time - start_time) / 86400 / 300):.1f}")
 
         # The API returns a max of 300 candles per request. We'll need to paginate.
         all_candles = []
         current_start = start_time
+        batch_count = 0
         
         while current_start < end_time:
+            batch_count += 1
             # Calculate the end for this specific request (300 candles worth of time)
-            # This is an approximation; the API handles the exact candle count.
-            current_end = current_start + (300 * 86400) # 300 days for daily granularity
+            # For daily granularity, 300 days = 300 * 86400 seconds
+            current_end = current_start + (300 * 86400)  # 300 days for daily granularity
             if current_end > end_time:
                 current_end = end_time
 
-            print(f"Fetching batch from {pd.to_datetime(current_start, unit='s').date()} to {pd.to_datetime(current_end, unit='s').date()}...")
+            print(f"Batch {batch_count}: Fetching from {pd.to_datetime(current_start, unit='s').date()} to {pd.to_datetime(current_end, unit='s').date()}...")
 
-            # Corrected API call to use get_market_candles
-            response = client.get_market_candles(
+            # Use get_public_candles for public data access
+            response = client.get_public_candles(
                 product_id=product_id,
                 start=str(current_start),
                 end=str(current_end),
                 granularity=granularity
             )
             
-            candles = response.get('candles')
+            # Convert response to dictionary and extract candles
+            response_dict = response.to_dict()
+            candles = response_dict.get('candles', [])
             if not candles:
                 print("No more data in this batch or an error occurred.")
                 break # No more data to fetch
             
             all_candles.extend(candles)
             
-            # The 'start' of the last candle is our new 'current_start' for the next batch
-            last_candle_start = int(candles[-1]['start'])
-            current_start = last_candle_start + 86400 # Move to the next day to avoid overlap
+            # Move to the next batch by advancing 300 days (not 1 day)
+            # This ensures we fetch the next 300 candles without overlap
+            current_start = current_end
             time.sleep(0.5) # Add a small delay to avoid hitting rate limits
 
         if not all_candles:
