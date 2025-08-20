@@ -6,7 +6,7 @@
 import logging
 import sys
 import time
-from scanner_library import CryptoScanner
+from tokenometry import Tokenometry
 
 # --- Strategy Configurations ---
 
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     # chosen_config = LONG_TERM_CONFIG
     
     # The user of the library now controls the execution loop
-    scanner = CryptoScanner(config=chosen_config, logger=logger)
+    scanner = Tokenometry(config=chosen_config, logger=logger)
     
     while True:
         signals = scanner.scan()

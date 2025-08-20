@@ -37,6 +37,14 @@ The bot can be run in one of three distinct modes, each designed for a different
 
 ## Installation
 
+### Option 1: Install from PyPI (Recommended)
+
+```bash
+pip install tokenometry
+```
+
+### Option 2: Install from Source
+
 1.  **Clone the repository:**
     ```bash
     git clone [https://github.com/nguyenph88/Tokenometry.git](https://github.com/nguyenph88/Tokenometry.git)
@@ -49,22 +57,22 @@ The bot can be run in one of three distinct modes, each designed for a different
     source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
     ```
 
-3.  **Install the required dependencies:**
+3.  **Install the package in development mode:**
     ```bash
-    pip install -r requirements.txt
+    pip install -e .
     ```
 
-4.  **Set up your API keys:**
-    * Create a file named `.env` in the root directory of the project.
-    * Add your API keys to this file. The bot will gracefully handle missing keys by skipping the corresponding analysis.
-    ```
-    NEWS_API_KEY=your_key_from_newsapi_org
-    GLASSNODE_API_KEY=your_key_from_glassnode
+4.  **Set up your API keys (optional):**
+    * Copy `env.example` to `.env`
+    * Add your API keys to the `.env` file. The bot will gracefully handle missing keys by skipping the corresponding analysis.
+    ```bash
+    cp env.example .env
+    # Edit .env with your actual API keys
     ```
 
 ## Usage
 
-The bot can be configured to run in three different trading modes, each optimized for different trading styles and timeframes. The configuration is handled through the `example_usage.py` script, which demonstrates how to use the `CryptoScanner` library.
+The bot can be configured to run in three different trading modes, each optimized for different trading styles and timeframes. The configuration is handled through the `example_usage.py` script, which demonstrates how to use the `Tokenometry` library.
 
 ### Quick Start
 
