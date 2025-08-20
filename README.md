@@ -37,7 +37,7 @@ The bot can be run in one of three distinct modes, each designed for a different
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/nguyenph88/Tokenometry.git](https://github.com/nguyen/Tokenometry.git)
+    git clone [https://github.com/nguyenph88/Tokenometry.git](https://github.com/nguyenph88/Tokenometry.git)
     cd Tokenometry
     ```
 
@@ -62,24 +62,149 @@ The bot can be run in one of three distinct modes, each designed for a different
 
 ## Usage
 
-To run the bot, simply execute the Python script corresponding to the strategy you wish to use from your terminal.
+The bot can be configured to run in three different trading modes, each optimized for different trading styles and timeframes. The configuration is handled through the `example_usage.py` script, which demonstrates how to use the `CryptoScanner` library.
 
-* **For Long-Term Analysis (runs every 24 hours):**
-    ```bash
-    python milestone_7.py
-    ```
+### Quick Start
 
-* **For Aggressive Swing Trading (runs every 4 hours):**
-    ```bash
-    python milestone_10_aggressive.py
-    ```
+1. **Run the example script:**
+   ```bash
+   python example_usage.py
+   ```
 
-* **For Day Trading (runs every 5 minutes):**
-    ```bash
-    python milestone_11_daytrader.py
-    ```
+2. **Choose your strategy** by uncommenting one of the three configurations in the script:
+   ```python
+   # CHOOSE YOUR STRATEGY HERE
+   chosen_config = DAY_TRADER_CONFIG      # For day trading
+   # chosen_config = SWING_TRADER_CONFIG  # For swing trading
+   # chosen_config = LONG_TERM_CONFIG     # For long-term investing
+   ```
 
-The bot will start running immediately, and all output, signals, and errors will be logged to a file (e.g., `crypto_scanner.log` or `crypto_daytrader.log`) in the same directory.
+### Strategy Configurations
+
+#### 1. Day Trader Strategy (High-Frequency)
+**Best for:** Active day traders who want to capture intraday momentum shifts
+**Analysis Frequency:** Every 5 minutes
+**Timeframes:** 5-minute signals, 1-hour trend confirmation
+
+```python
+DAY_TRADER_CONFIG = {
+    "STRATEGY_NAME": "Day Trader",
+    "PRODUCT_IDS": ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD"],
+    "GRANULARITY_SIGNAL": "FIVE_MINUTE",    # 5-minute chart for signals
+    "GRANULARITY_TREND": "ONE_HOUR",        # 1-hour chart for trend
+    "SHORT_PERIOD": 9,                      # Fast EMA
+    "LONG_PERIOD": 21,                      # Slow EMA
+    "RISK_PER_TRADE_PERCENTAGE": 0.5,      # Conservative 0.5% risk
+    "ATR_STOP_LOSS_MULTIPLIER": 2.0,       # Tight stop-loss
+}
+```
+
+**When to use:** During active trading hours when you want to catch quick momentum shifts and scalp small profits.
+
+#### 2. Aggressive Swing Trader Strategy
+**Best for:** Swing traders who hold positions for days to weeks
+**Analysis Frequency:** Every 4 hours
+**Timeframes:** 4-hour signals, daily trend confirmation
+
+```python
+SWING_TRADER_CONFIG = {
+    "STRATEGY_NAME": "Aggressive Swing Trader",
+    "PRODUCT_IDS": ["BTC-USD", "ETH-USD", "LINK-USD"],
+    "GRANULARITY_SIGNAL": "FOUR_HOUR",     # 4-hour chart for signals
+    "GRANULARITY_TREND": "ONE_DAY",        # Daily chart for trend
+    "SHORT_PERIOD": 20,                    # Medium-term EMA
+    "LONG_PERIOD": 50,                     # Long-term EMA
+    "RISK_PER_TRADE_PERCENTAGE": 1.0,     # Standard 1% risk
+    "ATR_STOP_LOSS_MULTIPLIER": 2.5,      # Moderate stop-loss
+}
+```
+
+**When to use:** For capturing multi-day market swings and trend reversals, ideal for part-time traders.
+
+#### 3. Long-Term Investor Strategy
+**Best for:** Position traders and long-term investors
+**Analysis Frequency:** Every 24 hours
+**Timeframes:** Daily signals, weekly trend confirmation
+
+```python
+LONG_TERM_CONFIG = {
+    "STRATEGY_NAME": "Long-Term Investor",
+    "PRODUCT_IDS": ["BTC-USD", "ETH-USD"],
+    "GRANULARITY_SIGNAL": "ONE_DAY",       # Daily chart for signals
+    "GRANULARITY_TREND": "ONE_WEEK",       # Weekly chart for trend
+    "TREND_INDICATOR_TYPE": "SMA",         # Simple Moving Average
+    "SHORT_PERIOD": 50,                    # 50-day SMA
+    "LONG_PERIOD": 200,                    # 200-day SMA
+    "RISK_PER_TRADE_PERCENTAGE": 1.0,     # Standard 1% risk
+    "ATR_STOP_LOSS_MULTIPLIER": 2.5,      # Moderate stop-loss
+}
+```
+
+**When to use:** For identifying major market trends and making long-term investment decisions.
+
+### Customizing Your Strategy
+
+You can modify any configuration by editing the parameters:
+
+```python
+# Example: Custom day trading configuration
+CUSTOM_DAY_TRADE = {
+    "STRATEGY_NAME": "Custom Day Trader",
+    "PRODUCT_IDS": ["BTC-USD", "ETH-USD"],  # Monitor fewer assets
+    "GRANULARITY_SIGNAL": "FIVE_MINUTE",
+    "GRANULARITY_TREND": "ONE_HOUR",
+    "SHORT_PERIOD": 5,                      # Faster signals
+    "LONG_PERIOD": 13,                      # Shorter trend
+    "RSI_PERIOD": 10,                       # More sensitive RSI
+    "RISK_PER_TRADE_PERCENTAGE": 0.25,     # Very conservative
+    "ATR_STOP_LOSS_MULTIPLIER": 1.5,       # Tighter stops
+}
+```
+
+### Understanding the Signals
+
+The bot generates three types of signals:
+
+- **BUY**: Golden cross (fast EMA > slow EMA) + bullish trend + RSI not overbought + MACD bullish
+- **SELL**: Death cross (fast EMA < slow EMA) + bearish trend + RSI not oversold + MACD bearish  
+- **HOLD**: No crossover or trend misalignment
+
+### Risk Management Features
+
+- **Automatic Stop-Loss**: Calculated using ATR (Average True Range) for volatility-adjusted stops
+- **Position Sizing**: Automatically calculates position size based on your risk percentage
+- **Portfolio Protection**: Each trade risks only the specified percentage of your portfolio
+
+### Logging and Monitoring
+
+The bot provides comprehensive logging:
+- **Console Output**: Real-time signal information
+- **File Logging**: Complete audit trail in `trading_app.log`
+- **Signal Details**: Timestamp, asset, signal type, trend, price, and trade plan
+
+### Running in Production
+
+For 24/7 operation on a server:
+
+1. **Use a process manager** like `systemd`, `supervisord`, or `PM2`
+2. **Set up monitoring** to restart the bot if it crashes
+3. **Configure log rotation** to manage log file sizes
+4. **Set up alerts** for critical errors or signal generation
+
+### Example Output
+
+```
+2025-08-19 21:20:12,698 - CryptoTraderApp - INFO - Starting new scan with 'Day Trader' strategy.
+2025-08-19 21:20:12,699 - CryptoTraderApp - INFO - Fetching ONE_HOUR data for BTC-USD...
+2025-08-19 21:20:12,886 - CryptoTraderApp - INFO - Trend for BTC-USD on ONE_HOUR chart: Bearish
+2025-08-19 21:20:12,886 - CryptoTraderApp - INFO - Fetching FIVE_MINUTE data for BTC-USD...
+2025-08-19 21:20:13,108 - CryptoTraderApp - INFO - Calculating technical indicators...
+2025-08-19 21:20:13,114 - CryptoTraderApp - INFO - Generating signals on FIVE_MINUTE chart...
+2025-08-19 21:20:14,249 - CryptoTraderApp - INFO - Scan complete. Found 0 actionable signals.
+2025-08-19 21:20:14,249 - CryptoTraderApp - INFO - Sleeping for 5.0 minutes until the next scan.
+```
+
+
 
 ## Disclaimer
 
