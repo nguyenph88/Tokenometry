@@ -1,10 +1,12 @@
 import time
-import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Union
 from coinbase.rest import RESTClient
+import warnings
+import logging
+import sys
 import os
 from dotenv import load_dotenv
 
@@ -37,6 +39,10 @@ class Tokenometry:
         else:
             self.logger = self._setup_logging()
             
+        # Suppress pandas warnings for cleaner output
+        warnings.simplefilter(action='ignore', category=pd.errors.SettingWithCopyWarning)
+        warnings.simplefilter(action='ignore', category=FutureWarning)
+            
         self.logger.info(f"Initialized Tokenometry with '{config['STRATEGY_NAME']}' strategy")
     
     def _setup_logging(self) -> logging.Logger:
@@ -61,124 +67,70 @@ class Tokenometry:
         
         return logger
     
-    def _get_historical_data(self, product_id: str, granularity: str) -> Optional[pd.DataFrame]:
+    def _get_historical_data(self, product_id, granularity):
         """Fetches a rolling window of historical data."""
+        self.logger.info(f"Fetching {granularity} data for {product_id}...")
         try:
-            cfg = self.config
-            lookback_days = cfg['LOOKBACK_DAYS']
-            end_time = datetime.utcnow()
-            start_time = end_time - timedelta(days=lookback_days)
+            # Fetch the max 300 candles per request
+            granularity_seconds = self.config['GRANULARITY_SECONDS'][granularity]
+            duration_seconds = 300 * granularity_seconds
+            start_time = int(time.time() - duration_seconds)
+            end_time = int(time.time())
+
+            response = self.client.get_public_candles(
+                product_id=product_id, 
+                start=str(start_time), 
+                end=str(end_time), 
+                granularity=granularity
+            )
             
-            # Convert granularity to seconds
-            granularity_map = {
-                '1m': 60, '5m': 300, '15m': 900, '30m': 1800,
-                '1h': 3600, '4h': 14400, '1d': 86400, '1w': 604800
-            }
-            granularity_seconds = granularity_map.get(granularity, 86400)
-            
-            self.logger.info(f"Fetching {granularity} data for {product_id} from {start_time} to {end_time}")
-            
-            # Calculate estimated API calls needed
-            total_seconds = (end_time - start_time).total_seconds()
-            estimated_calls = int(total_seconds / (300 * granularity_seconds)) + 1
-            self.logger.info(f"Estimated API calls: {estimated_calls}")
-            
-            all_candles = []
-            current_start = start_time
-            batch_count = 0
-            
-            while current_start < end_time:
-                batch_count += 1
-                current_end = min(current_start + timedelta(seconds=300 * granularity_seconds), end_time)
-                
-                self.logger.info(f"Batch {batch_count}: Fetching from {current_start} to {current_end}")
-                
-                try:
-                    response = self.client.get_public_candles(
-                        product_id=product_id,
-                        start=current_start.isoformat(),
-                        end=current_end.isoformat(),
-                        granularity=granularity
-                    )
-                    
-                    candles = response.to_dict().get('candles', [])
-                    if candles:
-                        all_candles.extend(candles)
-                        self.logger.info(f"Batch {batch_count}: Retrieved {len(candles)} candles")
-                    else:
-                        self.logger.warning(f"Batch {batch_count}: No candles returned")
-                        
-                except Exception as e:
-                    self.logger.error(f"Error fetching batch {batch_count}: {e}")
-                    break
-                
-                # Move to next batch
-                current_start = current_end
-                
-                # Rate limiting - be respectful to the API
-                time.sleep(0.1)
-            
-            if not all_candles:
-                self.logger.warning(f"No historical data retrieved for {product_id}")
+            # Convert response to dictionary and extract candles
+            response_dict = response.to_dict()
+            candles = response_dict.get('candles', [])
+            if not candles: 
+                self.logger.warning(f"No price data from Coinbase for {product_id}.")
                 return None
-            
-            # Convert to DataFrame
-            df = pd.DataFrame(all_candles)
-            df['timestamp'] = pd.to_datetime(pd.to_numeric(df['timestamp'], errors='coerce'), unit='s')
+                
+            df = pd.DataFrame(candles)
+            df.rename(columns={'start': 'timestamp', 'low': 'Low', 'high': 'High', 'open': 'Open', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
+            df['timestamp'] = pd.to_datetime(pd.to_numeric(df['timestamp']), unit='s')
+            for col in ['Low', 'High', 'Open', 'Close', 'Volume']: 
+                df[col] = pd.to_numeric(df[col])
+            df.drop_duplicates(subset='timestamp', inplace=True)
             df.set_index('timestamp', inplace=True)
-            
-            # Convert numeric columns
-            numeric_columns = ['open', 'high', 'low', 'close', 'volume']
-            for col in numeric_columns:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-            
-            df.dropna(inplace=True)
             df.sort_index(inplace=True)
-            
-            self.logger.info(f"Successfully retrieved {len(df)} candles for {product_id}")
             return df
-            
         except Exception as e:
-            self.logger.error(f"Error fetching historical data for {product_id}: {e}")
+            self.logger.error(f"Error fetching price data for {product_id}: {e}")
             return None
     
-    def _get_trend(self, product_id: str) -> str:
-        """Determines the overall trend using the configured trend timeframe and indicator."""
-        try:
-            cfg = self.config
-            trend_granularity = cfg['GRANULARITY_TREND']
-            trend_period = cfg['TREND_PERIOD']
-            
-            df_trend = self._get_historical_data(product_id, trend_granularity)
-            if df_trend is None or df_trend.empty:
-                return "Unknown"
-            
-            cfg = self.config
-            trend_indicator_type = cfg.get('TREND_INDICATOR_TYPE', 'EMA').upper()
-            trend_period = cfg['TREND_PERIOD']
-            trend_col = f"{trend_indicator_type}_{trend_period}"
-
-            if trend_indicator_type == 'SMA':
-                df_trend = self._calculate_sma(df_trend, trend_period, trend_col)
-            else: # Default to EMA
-                df_trend = self._calculate_ema(df_trend, trend_period, trend_col)
-            
-            df_trend.dropna(inplace=True)
-            
-            if df_trend.empty:
-                return "Unknown"
-                
-            latest_candle = df_trend.iloc[-1]
-            return "Bullish" if latest_candle['close'] > latest_candle[trend_col] else "Bearish"
-
-        except Exception as e:
-            self.logger.error(f"Error determining trend for {product_id}: {e}")
+    def _get_trend(self, product_id):
+        """Determines the main trend using the configured trend timeframe and indicator."""
+        df_trend = self._get_historical_data(product_id, self.config['GRANULARITY_TREND'])
+        if df_trend is None or df_trend.empty: 
             return "Unknown"
+        
+        cfg = self.config
+        trend_indicator_type = cfg.get('TREND_INDICATOR_TYPE', 'EMA').upper()
+        trend_period = cfg['TREND_PERIOD']
+        trend_col = f"{trend_indicator_type}_{trend_period}"
+
+        if trend_indicator_type == 'SMA':
+            df_trend = self._calculate_sma(df_trend, trend_period, trend_col)
+        else: # Default to EMA
+            df_trend = self._calculate_ema(df_trend, trend_period, trend_col)
+            
+        df_trend.dropna(inplace=True)
+        
+        if df_trend.empty:
+            return "Unknown"
+            
+        latest_candle = df_trend.iloc[-1]
+        return "Bullish" if latest_candle['Close'] > latest_candle[trend_col] else "Bearish"
 
     def _calculate_indicators(self, df):
         """Calculates all necessary technical indicators based on the config."""
-        if df is None or df.empty: 
+        if df is None: 
             return None
         self.logger.info("Calculating technical indicators...")
         cfg = self.config
@@ -198,17 +150,17 @@ class Tokenometry:
 
     def _calculate_sma(self, df: pd.DataFrame, period: int, column_name: str) -> pd.DataFrame:
         """Calculate Simple Moving Average."""
-        df[column_name] = df['close'].rolling(window=period).mean()
+        df[column_name] = df['Close'].rolling(window=period).mean()
         return df
     
     def _calculate_ema(self, df: pd.DataFrame, period: int, column_name: str) -> pd.DataFrame:
         """Calculate Exponential Moving Average."""
-        df[column_name] = df['close'].ewm(span=period, adjust=False).mean()
+        df[column_name] = df['Close'].ewm(span=period, adjust=False).mean()
         return df
     
     def _calculate_rsi(self, df: pd.DataFrame, period: int) -> pd.DataFrame:
         """Calculate Relative Strength Index."""
-        delta = df['close'].diff()
+        delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
         rs = gain / loss
@@ -217,8 +169,8 @@ class Tokenometry:
     
     def _calculate_macd(self, df: pd.DataFrame, fast: int, slow: int, signal: int) -> pd.DataFrame:
         """Calculate MACD (Moving Average Convergence Divergence)."""
-        ema_fast = df['close'].ewm(span=fast, adjust=False).mean()
-        ema_slow = df['close'].ewm(span=slow, adjust=False).mean()
+        ema_fast = df['Close'].ewm(span=fast, adjust=False).mean()
+        ema_slow = df['Close'].ewm(span=slow, adjust=False).mean()
         macd_line = ema_fast - ema_slow
         macd_signal = macd_line.ewm(span=signal, adjust=False).mean()
         
@@ -228,9 +180,9 @@ class Tokenometry:
     
     def _calculate_atr(self, df: pd.DataFrame, period: int) -> pd.DataFrame:
         """Calculate Average True Range."""
-        high_low = df['high'] - df['low']
-        high_close = np.abs(df['high'] - df['close'].shift())
-        low_close = np.abs(df['low'] - df['close'].shift())
+        high_low = df['High'] - df['Low']
+        high_close = np.abs(df['High'] - df['Close'].shift())
+        low_close = np.abs(df['Low'] - df['Close'].shift())
         
         true_range = np.maximum(high_low, np.maximum(high_close, low_close))
         df[f'ATRr_{period}'] = true_range.rolling(window=period).mean()
@@ -238,7 +190,7 @@ class Tokenometry:
 
     def _generate_signals(self, df):
         """Generates technical signals based on the configured strategy."""
-        if df is None or df.empty: 
+        if df is None: 
             return None
         self.logger.info(f"Generating signals on {self.config['GRANULARITY_SIGNAL']} chart...")
         cfg = self.config
@@ -248,14 +200,6 @@ class Tokenometry:
         rsi_col = f"RSI_{cfg['RSI_PERIOD']}"
         macd_line_col = f"MACD_{cfg['MACD_FAST']}_{cfg['MACD_SLOW']}_{cfg['MACD_SIGNAL']}"
         macd_signal_col = f"MACDs_{cfg['MACD_FAST']}_{cfg['MACD_SLOW']}_{cfg['MACD_SIGNAL']}"
-        atr_col = f"ATRr_{cfg['ATR_PERIOD']}"
-        
-        # Check if required columns exist
-        required_cols = [short_col, long_col, rsi_col, macd_line_col, macd_signal_col, atr_col]
-        missing_cols = [col for col in required_cols if col not in df.columns]
-        if missing_cols:
-            self.logger.warning(f"Missing indicator columns: {missing_cols}")
-            return None
         
         df['Signal'] = 0
         
@@ -287,75 +231,45 @@ class Tokenometry:
             data = self._get_historical_data(product_id, self.config['GRANULARITY_SIGNAL'])
             if data is not None and not data.empty:
                 data = self._calculate_indicators(data)
-                if data is not None:
-                    data.dropna(inplace=True)
-                    data = self._generate_signals(data)
-                    
-                    if data is not None and not data.empty:
-                        latest_row = data.iloc[-1]
-                        tech_signal = latest_row['Signal']
-                        
-                        final_signal = "HOLD"
-                        if tech_signal == 1 and trend == "Bullish":
-                            final_signal = "BUY"
-                        elif tech_signal == -1 and trend == "Bearish":
-                            final_signal = "SELL"
-                        
-                        # Calculate risk metrics
-                        atr_col = f"ATRr_{self.config['ATR_PERIOD']}"
-                        if atr_col in latest_row:
-                            atr_value = latest_row[atr_col]
-                            current_price = latest_row['close']
-                            
-                            # Risk management calculations
-                            risk_per_trade = self.config.get('RISK_PER_TRADE', 0.02)  # 2% default
-                            portfolio_value = self.config.get('PORTFOLIO_VALUE', 10000)  # $10k default
-                            risk_amount = portfolio_value * risk_per_trade
-                            
-                            # Position sizing based on ATR
-                            stop_loss_pips = self.config.get('STOP_LOSS_ATR_MULTIPLIER', 2) * atr_value
-                            position_size = risk_amount / stop_loss_pips if stop_loss_pips > 0 else 0
-                            
-                            signal_info = {
-                                'product_id': product_id,
-                                'timestamp': latest_row.name,
-                                'price': current_price,
-                                'signal': final_signal,
-                                'trend': trend,
-                                'technical_signal': tech_signal,
-                                'rsi': latest_row.get(f"RSI_{self.config['RSI_PERIOD']}", None),
-                                'macd': latest_row.get(f"MACD_{self.config['MACD_FAST']}_{self.config['MACD_SLOW']}_{self.config['MACD_SIGNAL']}", None),
-                                'atr': atr_value,
-                                'stop_loss': current_price - stop_loss_pips,
-                                'take_profit': current_price + (stop_loss_pips * self.config.get('RISK_REWARD_RATIO', 2)),
-                                'position_size': position_size,
-                                'risk_amount': risk_amount
-                            }
-                        else:
-                            signal_info = {
-                                'product_id': product_id,
-                                'timestamp': latest_row.name,
-                                'price': latest_row['close'],
-                                'signal': final_signal,
-                                'trend': trend,
-                                'technical_signal': tech_signal,
-                                'rsi': latest_row.get(f"RSI_{self.config['RSI_PERIOD']}", None),
-                                'macd': latest_row.get(f"MACD_{self.config['MACD_FAST']}_{self.config['MACD_SLOW']}_{self.config['MACD_SIGNAL']}", None),
-                                'atr': None,
-                                'stop_loss': None,
-                                'take_profit': None,
-                                'position_size': None,
-                                'risk_amount': None
-                            }
-                        
-                        signals.append(signal_info)
-                        self.logger.info(f"Signal for {product_id}: {final_signal} (Trend: {trend}, Technical: {tech_signal})")
-                    else:
-                        self.logger.warning(f"No signals generated for {product_id}")
-                else:
-                    self.logger.warning(f"Failed to calculate indicators for {product_id}")
-            else:
-                self.logger.warning(f"No historical data available for {product_id}")
+                data.dropna(inplace=True)
+                data = self._generate_signals(data)
+                
+                latest_row = data.iloc[-1]
+                tech_signal = latest_row['Signal']
+                
+                final_signal = "HOLD"
+                if tech_signal == 1 and trend == "Bullish":
+                    final_signal = "BUY"
+                elif tech_signal == -1 and trend == "Bearish":
+                    final_signal = "SELL"
+                
+                if final_signal != "HOLD":
+                    trade_plan = {}
+                    if final_signal == "BUY":
+                        cfg = self.config
+                        atr_col = f"ATRr_{cfg['ATR_PERIOD']}"
+                        if atr_col in latest_row.index:
+                            latest_atr = latest_row[atr_col]
+                            stop_loss = latest_row['Close'] - (latest_atr * cfg['ATR_STOP_LOSS_MULTIPLIER'])
+                            capital_to_risk = cfg['HYPOTHETICAL_PORTFOLIO_SIZE'] * (cfg['RISK_PER_TRADE_PERCENTAGE'] / 100)
+                            stop_loss_dist = latest_row['Close'] - stop_loss
+                            if stop_loss_dist > 0:
+                                position_size = capital_to_risk / stop_loss_dist
+                                trade_plan = {
+                                    'stop_loss': round(stop_loss, 4),
+                                    'position_size_crypto': round(position_size, 6),
+                                    'position_size_usd': round(position_size * latest_row['Close'], 2)
+                                }
+
+                    signal_data = {
+                        'timestamp': latest_row.name.strftime('%Y-%m-%d %H:%M:%S'),
+                        'asset': product_id,
+                        'signal': final_signal,
+                        'trend': trend,
+                        'close_price': latest_row['Close'],
+                        'trade_plan': trade_plan
+                    }
+                    signals.append(signal_data)
         
         self.logger.info(f"Scan complete. Found {len(signals)} actionable signals.")
         return signals

@@ -6,7 +6,7 @@
 import logging
 import sys
 import time
-from tokenometry import Tokenometry
+from tokenometry.core import Tokenometry
 
 # --- Strategy Configurations ---
 
@@ -88,8 +88,8 @@ if __name__ == "__main__":
     
     # CHOOSE YOUR STRATEGY HERE
     chosen_config = DAY_TRADER_CONFIG
-    # chosen_config = SWING_TRADER_CONFIG
-    # chosen_config = LONG_TERM_CONFIG
+    #chosen_config = SWING_TRADER_CONFIG
+    #chosen_config = LONG_TERM_CONFIG
     
     # The user of the library now controls the execution loop
     scanner = Tokenometry(config=chosen_config, logger=logger)
