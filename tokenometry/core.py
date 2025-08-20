@@ -146,11 +146,16 @@ class Tokenometry:
         df = self._calculate_rsi(df, cfg['RSI_PERIOD'])
         df = self._calculate_macd(df, cfg['MACD_FAST'], cfg['MACD_SLOW'], cfg['MACD_SIGNAL'])
         df = self._calculate_atr(df, cfg['ATR_PERIOD'])
+        
+        # Calculate volume moving average if the filter is enabled
+        if cfg.get('VOLUME_FILTER_ENABLED', False):
+            df = self._calculate_sma(df, cfg['VOLUME_MA_PERIOD'], f"SMA_Volume_{cfg['VOLUME_MA_PERIOD']}", column='Volume')
+            
         return df
 
-    def _calculate_sma(self, df: pd.DataFrame, period: int, column_name: str) -> pd.DataFrame:
-        """Calculate Simple Moving Average."""
-        df[column_name] = df['Close'].rolling(window=period).mean()
+    def _calculate_sma(self, df: pd.DataFrame, period: int, column_name: str, column: str = 'Close') -> pd.DataFrame:
+        """Calculate Simple Moving Average on a specified column."""
+        df[column_name] = df[column].rolling(window=period).mean()
         return df
     
     def _calculate_ema(self, df: pd.DataFrame, period: int, column_name: str) -> pd.DataFrame:
@@ -203,15 +208,19 @@ class Tokenometry:
         
         df['Signal'] = 0
         
+        # --- Volume Filter Condition ---
+        volume_filter = (df['Volume'] > df[f"SMA_Volume_{cfg['VOLUME_MA_PERIOD']}"] * cfg['VOLUME_SPIKE_MULTIPLIER']) if cfg.get('VOLUME_FILTER_ENABLED', False) else True
+        
+        # --- Signal Logic ---
         golden_cross = (df[short_col] > df[long_col]) & (df[short_col].shift(1) <= df[long_col].shift(1))
         rsi_buy_filter = df[rsi_col] < cfg['RSI_OVERBOUGHT']
         macd_buy_filter = df[macd_line_col] > df[macd_signal_col]
-        df.loc[golden_cross & rsi_buy_filter & macd_buy_filter, 'Signal'] = 1
+        df.loc[golden_cross & rsi_buy_filter & macd_buy_filter & volume_filter, 'Signal'] = 1
         
         death_cross = (df[short_col] < df[long_col]) & (df[short_col].shift(1) >= df[long_col].shift(1))
         rsi_sell_filter = df[rsi_col] > cfg['RSI_OVERSOLD']
         macd_sell_filter = df[macd_line_col] < df[macd_signal_col]
-        df.loc[death_cross & rsi_sell_filter & macd_sell_filter, 'Signal'] = -1
+        df.loc[death_cross & rsi_sell_filter & macd_sell_filter & volume_filter, 'Signal'] = -1
         return df
 
     def scan(self):

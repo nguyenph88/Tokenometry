@@ -11,6 +11,7 @@ A sophisticated, multi-strategy crypto analysis bot for generating trading signa
 - **Multi-Strategy Support**: Day trading, swing trading, and long-term investment strategies
 - **Multi-Timeframe Analysis**: Combines higher timeframe trends with lower timeframe signals
 - **Technical Indicators**: EMA/SMA crossovers, RSI, MACD, ATR for comprehensive analysis
+- **Volume Filter**: Optional volume spike confirmation for improved signal quality
 - **Risk Management**: Automatic stop-loss calculation and position sizing
 - **Professional Logging**: Comprehensive audit trail and monitoring
 - **API Integration**: Coinbase Advanced Trade API for real-time data
@@ -85,6 +86,9 @@ config = {
     "MACD_SLOW": 26,                      # MACD slow period
     "MACD_SIGNAL": 9,                     # MACD signal period
     "ATR_PERIOD": 14,                     # ATR calculation period
+    "VOLUME_FILTER_ENABLED": True,        # Enable volume filter (optional)
+    "VOLUME_MA_PERIOD": 20,               # Volume moving average period
+    "VOLUME_SPIKE_MULTIPLIER": 2.0,       # Volume spike multiplier
     "HYPOTHETICAL_PORTFOLIO_SIZE": 100000.0,  # Portfolio size for calculations
     "RISK_PER_TRADE_PERCENTAGE": 1.0,    # Risk per trade percentage
     "ATR_STOP_LOSS_MULTIPLIER": 2.5,     # ATR multiplier for stop-loss
@@ -93,9 +97,29 @@ config = {
 
 ## 📊 Signal Types
 
-- **BUY**: Golden cross + bullish trend + RSI not overbought + MACD bullish
-- **SELL**: Death cross + bearish trend + RSI not oversold + MACD bearish
+- **BUY**: Golden cross + bullish trend + RSI not overbought + MACD bullish + volume spike (if enabled)
+- **SELL**: Death cross + bearish trend + RSI not oversold + MACD bearish + volume spike (if enabled)
 - **HOLD**: No crossover or trend misalignment
+
+## 🔧 Volume Filter
+
+The volume filter improves signal quality by requiring significant volume spikes to confirm technical crossovers:
+
+```python
+# Enable volume filter
+config["VOLUME_FILTER_ENABLED"] = True
+config["VOLUME_MA_PERIOD"] = 20          # Volume moving average period
+config["VOLUME_SPIKE_MULTIPLIER"] = 2.0  # Current volume must be 2x the average
+
+# Disable volume filter (default)
+config["VOLUME_FILTER_ENABLED"] = False
+```
+
+**Benefits:**
+- Reduces false signals by requiring volume confirmation
+- Only trades with significant volume spikes
+- Configurable sensitivity via multiplier
+- Optional feature - can be disabled for more signals
 
 ## 🛡️ Risk Management
 

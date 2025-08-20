@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2025-08-19
+
+### Added
+- **Volume Filter Enhancement** for improved signal quality
+- **Volume Moving Average calculation** to identify significant volume spikes
+- **Volume spike multiplier configuration** for customizable sensitivity
+- **Enhanced signal filtering** that requires volume confirmation for technical crossovers
+
+### Features
+- **Volume Filter Parameters**:
+  - `VOLUME_FILTER_ENABLED`: Enable/disable volume filtering (default: False)
+  - `VOLUME_MA_PERIOD`: Period for volume moving average calculation (default: 20)
+  - `VOLUME_SPIKE_MULTIPLIER`: Multiplier for volume spike detection (default: 2.0)
+- **Improved Signal Quality**: Only generates signals when volume confirms technical crossovers
+- **Configurable Sensitivity**: Different volume multipliers for different trading strategies
+
+### Technical
+- **Enhanced SMA calculation** to support volume column calculations
+- **Volume confirmation logic** integrated into signal generation pipeline
+- **Backward compatibility** maintained - volume filter is optional and disabled by default
+
+### Strategy Configurations
+- **Day Trader**: Volume spike multiplier 2.0 (high sensitivity for quick moves)
+- **Swing Trader**: Volume spike multiplier 1.5 (moderate sensitivity)
+- **Long-Term**: Volume spike multiplier 1.5 (moderate sensitivity)
+
 ## [1.0.5] - 2025-08-19
 
 ### Fixed

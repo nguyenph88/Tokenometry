@@ -14,6 +14,7 @@ This repository contains a sophisticated, multi-strategy crypto analysis bot wri
 * **Multi-Timeframe Analysis (MTA)**: Establishes a long-term trend on a higher timeframe to filter and confirm signals on a lower timeframe.
 * **Multi-Factor Signal Confirmation**:
     * **Technical Analysis**: Utilizes a robust combination of indicators, including Exponential Moving Averages (EMAs), the Relative Strength Index (RSI), and the Moving Average Convergence Divergence (MACD).
+    * **Volume Filter**: Optional volume spike confirmation to improve signal quality and reduce false signals.
     * **News Sentiment Analysis**: Integrates with NewsAPI to gauge the prevailing market narrative and filter signals that run contrary to strong market sentiment.
     * **On-Chain Analysis**: Connects to the Glassnode API to analyze fundamental investor behavior, such as accumulation or distribution patterns based on exchange net flows.
 * **Automated & Continuous Operation**: Designed to run 24/7 on a server, with a configurable analysis frequency and comprehensive logging for performance tracking and debugging.
@@ -104,6 +105,9 @@ DAY_TRADER_CONFIG = {
     "GRANULARITY_TREND": "ONE_HOUR",        # 1-hour chart for trend
     "SHORT_PERIOD": 9,                      # Fast EMA
     "LONG_PERIOD": 21,                      # Slow EMA
+    "VOLUME_FILTER_ENABLED": True,          # Enable volume filter
+    "VOLUME_MA_PERIOD": 20,                 # Volume moving average period
+    "VOLUME_SPIKE_MULTIPLIER": 2.0,         # Volume spike multiplier
     "RISK_PER_TRADE_PERCENTAGE": 0.5,      # Conservative 0.5% risk
     "ATR_STOP_LOSS_MULTIPLIER": 2.0,       # Tight stop-loss
 }
@@ -124,6 +128,9 @@ SWING_TRADER_CONFIG = {
     "GRANULARITY_TREND": "ONE_DAY",        # Daily chart for trend
     "SHORT_PERIOD": 20,                    # Medium-term EMA
     "LONG_PERIOD": 50,                     # Long-term EMA
+    "VOLUME_FILTER_ENABLED": True,         # Enable volume filter
+    "VOLUME_MA_PERIOD": 20,                # Volume moving average period
+    "VOLUME_SPIKE_MULTIPLIER": 1.5,        # Volume spike multiplier
     "RISK_PER_TRADE_PERCENTAGE": 1.0,     # Standard 1% risk
     "ATR_STOP_LOSS_MULTIPLIER": 2.5,      # Moderate stop-loss
 }
@@ -145,6 +152,9 @@ LONG_TERM_CONFIG = {
     "TREND_INDICATOR_TYPE": "SMA",         # Simple Moving Average
     "SHORT_PERIOD": 50,                    # 50-day SMA
     "LONG_PERIOD": 200,                    # 200-day SMA
+    "VOLUME_FILTER_ENABLED": True,         # Enable volume filter
+    "VOLUME_MA_PERIOD": 20,                # Volume moving average period
+    "VOLUME_SPIKE_MULTIPLIER": 1.5,        # Volume spike multiplier
     "RISK_PER_TRADE_PERCENTAGE": 1.0,     # Standard 1% risk
     "ATR_STOP_LOSS_MULTIPLIER": 2.5,      # Moderate stop-loss
 }
@@ -175,9 +185,29 @@ CUSTOM_DAY_TRADE = {
 
 The bot generates three types of signals:
 
-- **BUY**: Golden cross (fast EMA > slow EMA) + bullish trend + RSI not overbought + MACD bullish
-- **SELL**: Death cross (fast EMA < slow EMA) + bearish trend + RSI not oversold + MACD bearish  
+- **BUY**: Golden cross (fast EMA > slow EMA) + bullish trend + RSI not overbought + MACD bullish + volume spike (if enabled)
+- **SELL**: Death cross (fast EMA < slow EMA) + bearish trend + RSI not oversold + MACD bearish + volume spike (if enabled)
 - **HOLD**: No crossover or trend misalignment
+
+### Volume Filter
+
+The volume filter improves signal quality by requiring significant volume spikes to confirm technical crossovers:
+
+```python
+# Enable volume filter (recommended)
+config["VOLUME_FILTER_ENABLED"] = True
+config["VOLUME_MA_PERIOD"] = 20          # Volume moving average period
+config["VOLUME_SPIKE_MULTIPLIER"] = 2.0  # Current volume must be 2x the average
+
+# Disable volume filter (more signals, potentially lower quality)
+config["VOLUME_FILTER_ENABLED"] = False
+```
+
+**Benefits:**
+- Reduces false signals by requiring volume confirmation
+- Only trades with significant volume spikes
+- Configurable sensitivity via multiplier
+- Optional feature - can be disabled for more signals
 
 ### Risk Management Features
 
