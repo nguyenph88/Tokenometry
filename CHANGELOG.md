@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2025-08-19
+
+### Changed
+- **Removed pandas-ta dependency** to resolve Python 3.13 compatibility issues
+- **Replaced external technical indicators** with custom implementations using standard pandas and numpy
+- **Enhanced Python 3.13 support** by eliminating problematic third-party dependencies
+
+### Added
+- **Custom technical indicator calculations**:
+  - Simple Moving Average (SMA) using pandas rolling window
+  - Exponential Moving Average (EMA) using pandas ewm
+  - Relative Strength Index (RSI) with proper gain/loss calculations
+  - MACD (Moving Average Convergence Divergence) with signal line
+  - Average True Range (ATR) for volatility measurement
+- **Improved error handling** for missing data and indicator columns
+- **Enhanced logging** for better debugging and monitoring
+
+### Fixed
+- **Python 3.13 compatibility** issues resolved by removing pandas-ta
+- **Dependency conflicts** eliminated with modern Python environments
+- **Technical indicator reliability** improved with custom implementations
+- **Data validation** enhanced throughout the analysis pipeline
+
+### Technical
+- **Self-contained indicator calculations** using only pandas and numpy
+- **Optimized performance** with vectorized operations
+- **Better memory management** without external library overhead
+- **Improved maintainability** with custom, well-documented functions
+
+### Compatibility
+- **Python 3.8+** support maintained and enhanced
+- **pandas 2.1.0+** compatibility verified
+- **numpy 1.24.0+** compatibility improved
+- **Cross-platform** compatibility maintained
+- **Modern Python packaging** standards preserved
+
 ## [1.0.3] - 2025-08-19
 
 ### Changed

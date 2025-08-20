@@ -11,7 +11,7 @@ Example:
     >>> signals = bot.scan()
 """
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __author__ = "nguyenph88"
 __email__ = "your.email@example.com"
 __license__ = "MIT"
