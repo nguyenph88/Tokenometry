@@ -25,7 +25,9 @@ class Tokenometry:
         self.config = config
         self.logger = logger
         self.client = RESTClient()
+        # Suppress pandas warnings for cleaner output
         warnings.simplefilter(action='ignore', category=pd.errors.SettingWithCopyWarning)
+        warnings.simplefilter(action='ignore', category=FutureWarning)
 
     def _get_historical_data(self, product_id, granularity):
         """Fetches a rolling window of historical data."""
@@ -54,7 +56,9 @@ class Tokenometry:
             df = pd.DataFrame(candles)
             df.rename(columns={'start': 'timestamp', 'low': 'Low', 'high': 'High', 'open': 'Open', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
             df['timestamp'] = pd.to_datetime(pd.to_numeric(df['timestamp']), unit='s')
-            for col in ['Low', 'High', 'Open', 'Close', 'Volume']: df[col] = pd.to_numeric(df[col])
+            for col in ['Low', 'High', 'Open', 'Close', 'Volume']: 
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            df.dropna(subset=['Low', 'High', 'Open', 'Close'], inplace=True)
             df.drop_duplicates(subset='timestamp', inplace=True)
             df.set_index('timestamp', inplace=True)
             df.sort_index(inplace=True)
@@ -66,7 +70,8 @@ class Tokenometry:
     def _get_trend(self, product_id):
         """Determines the main trend using the configured trend timeframe and indicator."""
         df_trend = self._get_historical_data(product_id, self.config['GRANULARITY_TREND'])
-        if df_trend is None or df_trend.empty: return "Unknown"
+        if df_trend is None or df_trend.empty: 
+            return "Unknown"
         
         cfg = self.config
         trend_indicator_type = cfg.get('TREND_INDICATOR_TYPE', 'EMA').upper()
@@ -80,12 +85,16 @@ class Tokenometry:
             
         df_trend.dropna(inplace=True)
         
+        if df_trend.empty:
+            return "Unknown"
+            
         latest_candle = df_trend.iloc[-1]
         return "Bullish" if latest_candle['Close'] > latest_candle[trend_col] else "Bearish"
 
     def _calculate_indicators(self, df):
         """Calculates all necessary technical indicators based on the config."""
-        if df is None: return None
+        if df is None or df.empty: 
+            return None
         self.logger.info("Calculating technical indicators...")
         cfg = self.config
         signal_indicator_type = cfg.get('SIGNAL_INDICATOR_TYPE', 'EMA').upper()
@@ -104,7 +113,8 @@ class Tokenometry:
 
     def _generate_signals(self, df):
         """Generates technical signals based on the configured strategy."""
-        if df is None: return None
+        if df is None or df.empty: 
+            return None
         self.logger.info(f"Generating signals on {self.config['GRANULARITY_SIGNAL']} chart...")
         cfg = self.config
         indicator_type = cfg.get('SIGNAL_INDICATOR_TYPE', 'EMA').upper()
@@ -113,6 +123,14 @@ class Tokenometry:
         rsi_col = f"RSI_{cfg['RSI_PERIOD']}"
         macd_line_col = f"MACD_{cfg['MACD_FAST']}_{cfg['MACD_SLOW']}_{cfg['MACD_SIGNAL']}"
         macd_signal_col = f"MACDs_{cfg['MACD_FAST']}_{cfg['MACD_SLOW']}_{cfg['MACD_SIGNAL']}"
+        atr_col = f"ATRr_{cfg['ATR_PERIOD']}"
+        
+        # Check if required columns exist
+        required_cols = [short_col, long_col, rsi_col, macd_line_col, macd_signal_col, atr_col]
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            self.logger.warning(f"Missing indicator columns: {missing_cols}")
+            return None
         
         df['Signal'] = 0
         
@@ -144,43 +162,47 @@ class Tokenometry:
             data = self._get_historical_data(product_id, self.config['GRANULARITY_SIGNAL'])
             if data is not None and not data.empty:
                 data = self._calculate_indicators(data)
-                data.dropna(inplace=True)
-                data = self._generate_signals(data)
-                
-                latest_row = data.iloc[-1]
-                tech_signal = latest_row['Signal']
-                
-                final_signal = "HOLD"
-                if tech_signal == 1 and trend == "Bullish":
-                    final_signal = "BUY"
-                elif tech_signal == -1 and trend == "Bearish":
-                    final_signal = "SELL"
-                
-                if final_signal != "HOLD":
-                    trade_plan = {}
-                    if final_signal == "BUY":
-                        cfg = self.config
-                        latest_atr = latest_row[f"ATRr_{cfg['ATR_PERIOD']}"]
-                        stop_loss = latest_row['Close'] - (latest_atr * cfg['ATR_STOP_LOSS_MULTIPLIER'])
-                        capital_to_risk = cfg['HYPOTHETICAL_PORTFOLIO_SIZE'] * (cfg['RISK_PER_TRADE_PERCENTAGE'] / 100)
-                        stop_loss_dist = latest_row['Close'] - stop_loss
-                        if stop_loss_dist > 0:
-                            position_size = capital_to_risk / stop_loss_dist
-                            trade_plan = {
-                                'stop_loss': round(stop_loss, 4),
-                                'position_size_crypto': round(position_size, 6),
-                                'position_size_usd': round(position_size * latest_row['Close'], 2)
-                            }
+                if data is not None:
+                    data.dropna(inplace=True)
+                    data = self._generate_signals(data)
+                    
+                    if data is not None and not data.empty:
+                        latest_row = data.iloc[-1]
+                        tech_signal = latest_row['Signal']
+                        
+                        final_signal = "HOLD"
+                        if tech_signal == 1 and trend == "Bullish":
+                            final_signal = "BUY"
+                        elif tech_signal == -1 and trend == "Bearish":
+                            final_signal = "SELL"
+                        
+                        if final_signal != "HOLD":
+                            trade_plan = {}
+                            if final_signal == "BUY":
+                                cfg = self.config
+                                atr_col = f"ATRr_{cfg['ATR_PERIOD']}"
+                                if atr_col in latest_row.index:
+                                    latest_atr = latest_row[atr_col]
+                                    stop_loss = latest_row['Close'] - (latest_atr * cfg['ATR_STOP_LOSS_MULTIPLIER'])
+                                    capital_to_risk = cfg['HYPOTHETICAL_PORTFOLIO_SIZE'] * (cfg['RISK_PER_TRADE_PERCENTAGE'] / 100)
+                                    stop_loss_dist = latest_row['Close'] - stop_loss
+                                    if stop_loss_dist > 0:
+                                        position_size = capital_to_risk / stop_loss_dist
+                                        trade_plan = {
+                                            'stop_loss': round(stop_loss, 4),
+                                            'position_size_crypto': round(position_size, 6),
+                                            'position_size_usd': round(position_size * latest_row['Close'], 2)
+                                        }
 
-                    signal_data = {
-                        'timestamp': latest_row.name.strftime('%Y-%m-%d %H:%M:%S'),
-                        'asset': product_id,
-                        'signal': final_signal,
-                        'trend': trend,
-                        'close_price': latest_row['Close'],
-                        'trade_plan': trade_plan
-                    }
-                    signals.append(signal_data)
+                            signal_data = {
+                                'timestamp': latest_row.name.strftime('%Y-%m-%d %H:%M:%S'),
+                                'asset': product_id,
+                                'signal': final_signal,
+                                'trend': trend,
+                                'close_price': latest_row['Close'],
+                                'trade_plan': trade_plan
+                            }
+                            signals.append(signal_data)
         
         self.logger.info(f"Scan complete. Found {len(signals)} actionable signals.")
         return signals
