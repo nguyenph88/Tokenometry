@@ -98,7 +98,7 @@ def get_historical_data(product_id, granularity, years=1):
             return None
         df = pd.DataFrame(all_candles)
         df.rename(columns={'start': 'timestamp', 'low': 'Low', 'high': 'High', 'open': 'Open', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+        df['timestamp'] = pd.to_datetime(pd.to_numeric(df['timestamp']), unit='s')
         for col in ['Low', 'High', 'Open', 'Close', 'Volume']: df[col] = pd.to_numeric(df[col])
         df.drop_duplicates(subset='timestamp', inplace=True)
         df.set_index('timestamp', inplace=True)

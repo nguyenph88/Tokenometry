@@ -26,7 +26,7 @@ console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(log_formatter)
 logger.addHandler(console_handler)
 
-warnings.simplefilter(action='ignore', category=pd.core.common.SettingWithCopyWarning)
+warnings.simplefilter(action='ignore', category=pd.errors.SettingWithCopyWarning)
 
 # --- Configuration ---
 PRODUCT_IDS = ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD"] 
@@ -68,21 +68,23 @@ def get_historical_data(product_id, granularity):
         start_time = int(time.time() - duration_seconds)
         end_time = int(time.time())
 
-        response = client.get_market_candles(
+        response = client.get_public_candles(
             product_id=product_id, 
             start=str(start_time), 
             end=str(end_time), 
             granularity=granularity
         )
         
-        candles = response.get('candles')
+        # Convert response to dictionary and extract candles
+        response_dict = response.to_dict()
+        candles = response_dict.get('candles', [])
         if not candles: 
             logger.warning(f"No price data from Coinbase for {product_id}.")
             return None
             
         df = pd.DataFrame(candles)
         df.rename(columns={'start': 'timestamp', 'low': 'Low', 'high': 'High', 'open': 'Open', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+        df['timestamp'] = pd.to_datetime(pd.to_numeric(df['timestamp']), unit='s')
         for col in ['Low', 'High', 'Open', 'Close', 'Volume']: df[col] = pd.to_numeric(df[col])
         df.drop_duplicates(subset='timestamp', inplace=True)
         df.set_index('timestamp', inplace=True)
@@ -172,24 +174,24 @@ def run_analysis_cycle():
         elif tech_signal == -1 and trend == "Bearish":
             final_signal = "SELL"
             
-        # Only log if there is an active signal to reduce noise
-        if final_signal != "HOLD":
-            logger.info(f"--- {product_id} (H1 Trend: {trend}) ---")
-            logger.info(f"  Timestamp: {latest_timestamp.strftime('%Y-%m-%d %H:%M')}, Last Close: ${latest_close_price:,.2f}")
-            logger.info(f"  IMMEDIATE SIGNAL: {final_signal}")
+        # Log all assets with their current status
+        logger.info(f"--- {product_id} (H1 Trend: {trend}) ---")
+        logger.info(f"  Timestamp: {latest_timestamp.strftime('%Y-%m-%d %H:%M')}, Last Close: ${latest_close_price:,.2f}")
+        logger.info(f"  Signal: {final_signal}")
 
-            if final_signal == "BUY":
-                atr_col = f'ATRr_{ATR_PERIOD}'
-                latest_atr = latest_row[atr_col]
-                stop_loss_price = latest_close_price - (latest_atr * ATR_STOP_LOSS_MULTIPLIER)
-                capital_to_risk = HYPOTHETICAL_PORTFOLIO_SIZE * (RISK_PER_TRADE_PERCENTAGE / 100)
-                stop_loss_distance = latest_close_price - stop_loss_price
-                if stop_loss_distance > 0:
-                    position_size_crypto = capital_to_risk / stop_loss_distance
-                    position_size_usd = position_size_crypto * latest_close_price
-                    logger.info("  --- Suggested Trade Plan ---")
-                    logger.info(f"    Stop-Loss: ${stop_loss_price:,.2f}")
-                    logger.info(f"    Position Size: {position_size_crypto:.6f} {product_id.split('-')[0]} (${position_size_usd:,.2f})")
+        # Only show trade plan for active BUY signals
+        if final_signal == "BUY":
+            atr_col = f'ATRr_{ATR_PERIOD}'
+            latest_atr = latest_row[atr_col]
+            stop_loss_price = latest_close_price - (latest_atr * ATR_STOP_LOSS_MULTIPLIER)
+            capital_to_risk = HYPOTHETICAL_PORTFOLIO_SIZE * (RISK_PER_TRADE_PERCENTAGE / 100)
+            stop_loss_distance = latest_close_price - stop_loss_price
+            if stop_loss_distance > 0:
+                position_size_crypto = capital_to_risk / stop_loss_distance
+                position_size_usd = position_size_crypto * latest_close_price
+                logger.info("  --- Suggested Trade Plan ---")
+                logger.info(f"    Stop-Loss: ${stop_loss_price:,.2f}")
+                logger.info(f"    Position Size: {position_size_crypto:.6f} {product_id.split('-')[0]} (${position_size_usd:,.2f})")
 
     logger.info("="*80 + "\nAnalysis cycle complete.")
 
