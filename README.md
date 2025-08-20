@@ -2,6 +2,8 @@
 
 A tool that measures and analyzes all the critical data points of a crypto token—such as its price, volume, volatility, and market sentiment—to help users make informed decisions.
 
+NOTE: in the 1.0.2 I removed the external API to fectch the data for Sentiment. It slows down the process, the code is still in `main_milesstone` in case you want to take a look.
+
 ## Crypto Analysis Bot
 
 This repository contains a sophisticated, multi-strategy crypto analysis bot written in Python. The bot is designed to scan the cryptocurrency market, apply a range of analytical models, and generate trading signals based on a confluence of technical, sentiment, and on-chain data. It is architected to be flexible, allowing the user to switch between long-term investment, swing trading, and high-frequency day trading strategies.
