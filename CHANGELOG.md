@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2025-08-19
+
+### Fixed
+- **Resolved critical import conflict** that caused `'LOOKBACK_DAYS'` errors when running from subdirectories
+- **Fixed package installation conflicts** between development and installed versions
+- **Eliminated cached bytecode issues** that persisted across code changes
+- **Resolved module import path conflicts** when running examples from different directories
+
+### Changed
+- **Improved package installation process** with proper development mode setup
+- **Enhanced example file structure** for better reliability and consistency
+- **Cleaned up conflicting example files** that contained outdated code references
+
+### Technical
+- **Resolved Python module import precedence** issues between local and installed packages
+- **Fixed site-packages vs local development** version conflicts
+- **Improved package distribution** with proper editable install support
+- **Enhanced development workflow** with consistent import behavior across all directories
+
+### Compatibility
+- **Consistent behavior** across all execution contexts (root directory, subdirectories, examples)
+- **Reliable package imports** regardless of execution location
+- **Proper development environment** setup for contributors and users
+
 ## [1.0.4] - 2025-08-19
 
 ### Changed
