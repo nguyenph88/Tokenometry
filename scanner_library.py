@@ -6,6 +6,7 @@ import warnings
 import logging
 import sys
 
+
 # --- Library Class ---
 
 class CryptoScanner:
@@ -24,7 +25,7 @@ class CryptoScanner:
         self.config = config
         self.logger = logger
         self.client = RESTClient()
-        warnings.simplefilter(action='ignore', category=pd.core.common.SettingWithCopyWarning)
+        warnings.simplefilter(action='ignore', category=pd.errors.SettingWithCopyWarning)
 
     def _get_historical_data(self, product_id, granularity):
         """Fetches a rolling window of historical data."""
@@ -36,21 +37,23 @@ class CryptoScanner:
             start_time = int(time.time() - duration_seconds)
             end_time = int(time.time())
 
-            response = self.client.get_market_candles(
+            response = self.client.get_public_candles(
                 product_id=product_id, 
                 start=str(start_time), 
                 end=str(end_time), 
                 granularity=granularity
             )
             
-            candles = response.get('candles')
+            # Convert response to dictionary and extract candles
+            response_dict = response.to_dict()
+            candles = response_dict.get('candles', [])
             if not candles: 
                 self.logger.warning(f"No price data from Coinbase for {product_id}.")
                 return None
                 
             df = pd.DataFrame(candles)
             df.rename(columns={'start': 'timestamp', 'low': 'Low', 'high': 'High', 'open': 'Open', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+            df['timestamp'] = pd.to_datetime(pd.to_numeric(df['timestamp']), unit='s')
             for col in ['Low', 'High', 'Open', 'Close', 'Volume']: df[col] = pd.to_numeric(df[col])
             df.drop_duplicates(subset='timestamp', inplace=True)
             df.set_index('timestamp', inplace=True)

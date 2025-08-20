@@ -3,6 +3,11 @@
 # This file shows how to import and use the CryptoScanner library.
 # -----------------------------------------------------------------------------
 
+import logging
+import sys
+import time
+from scanner_library import CryptoScanner
+
 # --- Strategy Configurations ---
 
 DAY_TRADER_CONFIG = {
