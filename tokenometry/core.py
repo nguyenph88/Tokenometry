@@ -1,3 +1,6 @@
+# scanner_library.py
+# This file contains the reusable Tokenometry class.
+
 import time
 import pandas as pd
 import numpy as np
@@ -19,7 +22,7 @@ class Tokenometry:
     
     This class provides a flexible framework for cryptocurrency market analysis,
     supporting multiple trading strategies including day trading, swing trading,
-    and long-term investment approaches.
+    and long-term investment approaches. It now includes a signal strength model.
     """
     
     def __init__(self, config: Dict, logger: Optional[logging.Logger] = None):
@@ -181,6 +184,7 @@ class Tokenometry:
         
         df[f'MACD_{fast}_{slow}_{signal}'] = macd_line
         df[f'MACDs_{fast}_{slow}_{signal}'] = macd_signal
+        df[f'MACDh_{fast}_{slow}_{signal}'] = macd_line - macd_signal # Histogram
         return df
     
     def _calculate_atr(self, df: pd.DataFrame, period: int) -> pd.DataFrame:
@@ -192,6 +196,52 @@ class Tokenometry:
         true_range = np.maximum(high_low, np.maximum(high_close, low_close))
         df[f'ATRr_{period}'] = true_range.rolling(window=period).mean()
         return df
+
+    def _calculate_signal_strength(self, row: pd.Series, signal_type: str) -> str:
+        """
+        Calculates the strength of a signal based on RSI, MACD, and Volume.
+        
+        Args:
+            row: The pandas Series (candle) where the signal occurred.
+            signal_type: 'BUY' or 'SELL'.
+            
+        Returns:
+            A string: "Low", "Medium", or "Strong".
+        """
+        cfg = self.config
+        score = 0
+        
+        # 1. RSI Score (Max 1 point)
+        rsi = row[f"RSI_{cfg['RSI_PERIOD']}"]
+        if signal_type == 'BUY':
+            if rsi < 30: score += 1.0
+            elif rsi < 50: score += 0.5
+        elif signal_type == 'SELL':
+            if rsi > 70: score += 1.0
+            elif rsi > 50: score += 0.5
+            
+        # 2. MACD Score (Max 1 point)
+        macd_hist = row[f"MACDh_{cfg['MACD_FAST']}_{cfg['MACD_SLOW']}_{cfg['MACD_SIGNAL']}"]
+        avg_hist = row['Close'] * 0.001 # Heuristic: 0.1% of price as a baseline for histogram size
+        if signal_type == 'BUY' and macd_hist > 0:
+            if macd_hist > avg_hist * 2: score += 1.0
+            elif macd_hist > avg_hist: score += 0.5
+        elif signal_type == 'SELL' and macd_hist < 0:
+            if abs(macd_hist) > avg_hist * 2: score += 1.0
+            elif abs(macd_hist) > avg_hist: score += 0.5
+            
+        # 3. Volume Score (Max 1 point)
+        if cfg.get('VOLUME_FILTER_ENABLED', False):
+            volume = row['Volume']
+            avg_volume = row[f"SMA_Volume_{cfg['VOLUME_MA_PERIOD']}"]
+            multiplier = cfg['VOLUME_SPIKE_MULTIPLIER']
+            if volume > avg_volume * (multiplier + 1): score += 1.0 # e.g., > 3x for a 2.0 multiplier
+            elif volume > avg_volume * multiplier: score += 0.5
+            
+        # Classify strength based on total score
+        if score >= 2.5: return "Strong"
+        if score >= 1.5: return "Medium"
+        return "Low"
 
     def _generate_signals(self, df):
         """Generates technical signals based on the configured strategy."""
@@ -254,6 +304,8 @@ class Tokenometry:
                 
                 if final_signal != "HOLD":
                     trade_plan = {}
+                    signal_strength = self._calculate_signal_strength(latest_row, final_signal)
+                    
                     if final_signal == "BUY":
                         cfg = self.config
                         atr_col = f"ATRr_{cfg['ATR_PERIOD']}"
@@ -274,6 +326,7 @@ class Tokenometry:
                         'timestamp': latest_row.name.strftime('%Y-%m-%d %H:%M:%S'),
                         'asset': product_id,
                         'signal': final_signal,
+                        'strength': signal_strength,
                         'trend': trend,
                         'close_price': latest_row['Close'],
                         'trade_plan': trade_plan
